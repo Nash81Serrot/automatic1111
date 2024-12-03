@@ -121,3 +121,50 @@ def cached_data_for_file(subsection, title, filename, func):
         dump_cache()
 
     return entry['value']
+
+
+def prune_unused_hash():
+    import glob
+
+    from modules.paths_internal import extensions_dir
+
+    existing_cache = cache('extensions-git')
+    total_count = len(existing_cache)
+    with tqdm.tqdm(total=total_count, desc='pruning extensions') as progress:
+        for name in existing_cache:
+            if not os.path.isdir(os.path.join(extensions_dir, name)):
+                existing_cache.pop(name)
+            progress.update(1)
+
+    def file_exists(parent_dir, filename):
+        matches = glob.glob(os.path.join(parent_dir, '**', f'{filename}*'), recursive=True)
+        return len(matches) > 0
+
+    from modules.paths_internal import models_path
+    from modules.shared import cmd_opts
+
+    for db in ('hashes', 'hashes-addnet', 'safetensors-metadata'):
+        existing_cache = cache(db)
+        total_count = len(existing_cache)
+        with tqdm.tqdm(total=total_count, desc=f'pruning {db}') as progress:
+            for name in existing_cache:
+                if '/' not in name:
+                    progress.update(1)
+                    continue
+
+                category, filename = name.split('/', 1)
+                if category.lower() == 'lora':
+                    exists = file_exists(os.path.join(models_path, 'Lora'), filename)
+                elif category.lower() == 'checkpoint':
+                    exists = file_exists(os.path.join(models_path, 'Stable-diffusion'), filename)
+                elif category.lower() == 'textual_inversion':
+                    exists = file_exists(cmd_opts.embeddings_dir, filename)
+                else:
+                    progress.update(1)
+                    continue
+
+                if not exists:
+                    del existing_cache[name]
+                progress.update(1)
+
+    print('Finish pruning hash')
